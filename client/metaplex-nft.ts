@@ -28,16 +28,39 @@ const WALLET = Keypair.fromSecretKey(
     "mjscSouFove7dByjWG8yadueXxAyVt1cqsT76gt359BJneZQg8AqitFxTimBkXzSuNv3m3uAj24MF83yRrnYegs"
   )
 );
-const NFT_METADATA =
-  "https://aqua-safe-planarian-640.mypinata.cloud/ipfs/QmeV6XXWYH1EushEDSNx5gQEvv4uwLXA8uB3oNQCgpWxFr/vtopia_meta.json";
-const COLLECTION_NFT_MINT = "12FcU5Vi2iC7vCRTue4vJZkkMHJSacg7w1CySAxwfzFE";
-const CANDY_MACHINE_ID = "";
+const COLLECTION_NFT_MINT = [
+  "E1sRPdRpcxAcjQCRUKnkMV4jkZRVWeDLbT2TnDSyCyhz",
+  "8M7mUHm9L7fPm6dBJFYjqGFWjoxEesawZij2TNuscA6i",
+  "8DagZL9qYZwE5DgmRe5Eu6JAG3GA2CFkQArFkinR2ZSR",
+];
+
+const METADATA = [
+  "https://aqua-safe-planarian-640.mypinata.cloud/ipfs/Qmf4NdVQU3XrjqSEZHuzUbScAH9RjGMrrxmpLT4E4yKw3R/vtopia_meta.json",
+  "https://aqua-safe-planarian-640.mypinata.cloud/ipfs/QmXXLmgwU5XrGsFCXjfX5YdWuW1K5JYZpYT3cAJtpE4T5T/vtopia_meta.json",
+  "https://aqua-safe-planarian-640.mypinata.cloud/ipfs/QmNRTQumaY6cGsZhkTi3LmgvgTYcfZ8dJwB5UEqPEdTmJU/vtopia_meta.json",
+]
 const METAPLEX = Metaplex.make(SOLANA_CONNECTION).use(keypairIdentity(WALLET));
+const CANDY_MACHINE_ID = "";
+const CONFIG = {
+  name: "VTopia",
+  symbol: "VT",
+  sellerFeeBasisPoints: 500, //500 bp = 5%
+  creators: [
+    {
+      address: new PublicKey("B45t7VFMD9tNbDG8Unzr9z6LbknjwNegD9qDtd7jiLVy"),
+      share: 50,
+    },
+    {
+      address: new PublicKey("4x6TeJ7aXDGVtN8Wmh1tCMa1sB3Q6fXRwUptBkYBHbd7"),
+      share: 50,
+    },
+  ],
+};
 
 async function createCollectionNft() {
   const { nft: collectionNft } = await METAPLEX.nfts().create({
     name: "VTopia Collection",
-    uri: NFT_METADATA,
+    uri: METADATA[0],
     sellerFeeBasisPoints: 0,
     isCollection: true,
     updateAuthority: WALLET,
@@ -51,6 +74,31 @@ async function createCollectionNft() {
   );
 }
 
+async function mintNft(
+  metadataUri: string,
+  name: string,
+  sellerFee: number,
+  symbol: string,
+  collection: string,
+  creators: { address: PublicKey; share: number }[]
+): Promise<PublicKey> {
+  console.log(`Step 3 - Minting NFT`);
+  const { nft } = await METAPLEX.nfts().create({
+    uri: metadataUri,
+    name: name,
+    sellerFeeBasisPoints: sellerFee,
+    symbol: symbol,
+    creators: creators,
+    collection: new PublicKey(collection),
+    isMutable: false,
+  });
+  console.log(`   Success!🎉`);
+  console.log(
+    `   Minted NFT: https://explorer.solana.com/address/${nft.address}?cluster=devnet`
+  );
+  return nft.address;
+}
+
 async function mintProgrammableNft(
   metadataUri: string,
   name: string,
@@ -61,20 +109,18 @@ async function mintProgrammableNft(
 ) {
   console.log(`Minting pNFT`);
   try {
-    const transactionBuilder = await METAPLEX.nfts()
-      .builders()
-      .create({
-        uri: metadataUri,
-        name: name,
-        sellerFeeBasisPoints: sellerFee,
-        symbol: symbol,
-        creators: creators,
-        isMutable: true,
-        isCollection: false,
-        collection: new PublicKey(collection),
-        tokenStandard: TokenStandard.ProgrammableNonFungible,
-        ruleSet: null,
-      });
+    const transactionBuilder = await METAPLEX.nfts().builders().create({
+      uri: metadataUri,
+      name: name,
+      sellerFeeBasisPoints: sellerFee,
+      symbol: symbol,
+      creators: creators,
+      isMutable: true,
+      isCollection: false,
+      // collection: new PublicKey(collection),
+      tokenStandard: TokenStandard.ProgrammableNonFungible,
+      ruleSet: null,
+    });
 
     let { signature, confirmResponse } =
       await METAPLEX.rpc().sendAndConfirmTransaction(transactionBuilder);
@@ -118,7 +164,7 @@ async function generateCandyMachine() {
   );
 }
 
-async function transferNFT(mintAddress, dest) {
+async function transferNFT(mintAddress, dest, programmable = true) {
   // 👇 Add this code
   const destination = new PublicKey(dest); // replace with your friend's public key
   const transferTransactionBuilder = await METAPLEX.nfts()
@@ -126,7 +172,9 @@ async function transferNFT(mintAddress, dest) {
     .transfer({
       nftOrSft: {
         address: mintAddress,
-        tokenStandard: TokenStandard.ProgrammableNonFungible,
+        tokenStandard: programmable
+          ? TokenStandard.ProgrammableNonFungible
+          : TokenStandard.NonFungible,
       },
       authority: WALLET,
       fromOwner: WALLET.publicKey,
@@ -144,56 +192,66 @@ async function transferNFT(mintAddress, dest) {
 }
 
 async function main() {
-  const CONFIG = {
-    imgName: "VTopia",
-    symbol: "VT",
-    sellerFeeBasisPoints: 500, //500 bp = 5%
-    creators: [{ address: WALLET.publicKey, share: 100 }],
-    metadata:
-      "https://aqua-safe-planarian-640.mypinata.cloud/ipfs/QmeV6XXWYH1EushEDSNx5gQEvv4uwLXA8uB3oNQCgpWxFr/vtopia_meta.json",
-  };
-
   // createCollectionNft();
 
   const addres = [
+    "3dQpUZtmujzzCZdRXyveTdBS2w6ykncdXG5JjtDbHU7f",
     // "awFvi2DJuewSKQeEoSP8poxoM5inytsXd5bDWrmLa4H",
     // "4x6TeJ7aXDGVtN8Wmh1tCMa1sB3Q6fXRwUptBkYBHbd7",
-    "sCMYUv42jRq5WNkYygng2SjCpsHCyoQrtp1Fr7KFeqV",
-    "7weaTPysBSfi4hnjQC7Po78QMrwfaNVy7VyAMa5t7rqt",
-    "J3P7X3LmpoM31gb68UoxQTscqzyuicgFAKeMh2NchPk9",
-    "FTgy1WK7zyrSMfjC8e81aGrStMs2J1yHFjCfLwc7j8BV",
-    "DjwMoX4hs6tNgScT1zSy52ApxGbn8UCY3kpFcqkh23XA",
-    "Fub88mQDDD46s4aX9GjhSz2thyhbxeV8arCtSK8urvjy",
+    // "sCMYUv42jRq5WNkYygng2SjCpsHCyoQrtp1Fr7KFeqV",
+    // "7weaTPysBSfi4hnjQC7Po78QMrwfaNVy7VyAMa5t7rqt",
+    // "J3P7X3LmpoM31gb68UoxQTscqzyuicgFAKeMh2NchPk9",
+    // "FTgy1WK7zyrSMfjC8e81aGrStMs2J1yHFjCfLwc7j8BV",
+    // "DjwMoX4hs6tNgScT1zSy52ApxGbn8UCY3kpFcqkh23XA",
+    // "Fub88mQDDD46s4aX9GjhSz2thyhbxeV8arCtSK8urvjy",
   ];
-  let idx = 30;
-  for (let i = 0; i < addres.length; i++) {
-    for (let j = 0; j < 5; j++) {
-      idx = idx + 1;
-      let mint = await mintProgrammableNft(
-        CONFIG.metadata,
-        "VTopia NFT" + idx,
-        CONFIG.sellerFeeBasisPoints,
-        CONFIG.symbol,
-        COLLECTION_NFT_MINT,
-        [
-          {
-            address: new PublicKey(
-              "B45t7VFMD9tNbDG8Unzr9z6LbknjwNegD9qDtd7jiLVy"
-            ),
-            share: 50,
-          },
-          {
-            address: new PublicKey(
-              "4x6TeJ7aXDGVtN8Wmh1tCMa1sB3Q6fXRwUptBkYBHbd7"
-            ),
-            share: 50,
-          },
-        ]
-      );
 
-      transferNFT(new PublicKey(mint), new PublicKey(addres[i]));
+  const PROGRAM_NFT = false;
+  let idx = 1000;
+  for (let k = 1; k < COLLECTION_NFT_MINT.length; k++) {
+    for (let i = 0; i < addres.length; i++) {
+      for (let j = 0; j < 100; j++) {
+        idx = idx + 1;
+        if (PROGRAM_NFT) {
+          let mint = await mintProgrammableNft(
+            METADATA[k],
+            CONFIG.name + idx,
+            CONFIG.sellerFeeBasisPoints,
+            CONFIG.symbol,
+            COLLECTION_NFT_MINT[k],
+            CONFIG.creators
+          );
+
+          await transferNFT(new PublicKey(mint), new PublicKey(addres[i]));
+        } else {
+          let nft = await mintNft(
+            METADATA[k],
+            CONFIG.name + idx,
+            CONFIG.sellerFeeBasisPoints,
+            CONFIG.symbol,
+            COLLECTION_NFT_MINT[k],
+            CONFIG.creators
+          );
+
+          await transferNFT(nft, new PublicKey(addres[i]), false);
+        }
+      }
     }
   }
 }
 
+async function getTxStatus() {
+  const connection = SOLANA_CONNECTION;
+
+  // Define a tx id
+  const txId =
+    "5y1giFSuYgwShRq6yi4KSWDya1PEvMoPSiUGymtkeXvnRoD8SCEQ9MjsQu1U2pLkba2y6w4gHthSRQ943jzW2imy";
+
+  // Get the transaction status
+  const result = await connection.getParsedTransaction(txId);
+
+  console.log(result);
+}
+
+// createCollectionNft();
 main();
